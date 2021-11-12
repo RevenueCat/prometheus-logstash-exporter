@@ -1,0 +1,28 @@
+trigger:
+- main
+
+stages:
+- stage: UploadDockerImage
+  displayName: 'Upload Docker Image'
+  jobs:
+    - job: BuildAndUploadTestDockerImagePrometheus
+      displayName: 'Build and Upload logstash prometheus exporteri image'
+      pool:
+        vmImage: 'ubuntu-18.04'
+      steps:
+        - task: Docker@2
+          inputs:
+            repository: 'prometheus-logstash-exporter'
+            command: 'build'
+            Dockerfile: 'Dockerfile'
+            tags: 'latest'
+        - task: ECRPushImage@1
+          displayName: "Push and tag as 'latest'"
+          inputs:
+            awsCredentials: 'AWS (azure-devops user)'
+            regionName: 'us-east-1'
+            imageSource: 'imagename'
+            sourceImageName: 'prometheus-logstash-exporter'
+            repositoryName: 'prometheus-logstash-exporter'
+            pushTag: 'latest'
+            autoCreateRepository: true
