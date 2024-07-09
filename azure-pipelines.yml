@@ -8,7 +8,7 @@ stages:
     - job: BuildAndUploadTestDockerImagePrometheus
       displayName: 'Build and Upload logstash prometheus exporteri image'
       pool:
-        vmImage: 'ubuntu-18.04'
+        vmImage: 'ubuntu-22.04'
       steps:
         - task: Docker@2
           inputs:
