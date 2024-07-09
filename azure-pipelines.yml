@@ -6,7 +6,7 @@ stages:
   displayName: 'Upload Docker Image'
   jobs:
     - job: BuildAndUploadTestDockerImagePrometheus
-      displayName: 'Build and Upload logstash prometheus exporteri image'
+      displayName: 'Build and Upload logstash prometheus exporter image'
       pool:
         vmImage: 'ubuntu-22.04'
       steps:
