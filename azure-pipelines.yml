@@ -19,7 +19,7 @@ stages:
         - task: ECRPushImage@1
           displayName: "Push and tag as 'latest'"
           inputs:
-            awsCredentials: 'AWS (azure-devops user)'
+            awsCredentials: 'CICDAzureBuild'
             regionName: 'us-east-1'
             imageSource: 'imagename'
             sourceImageName: 'prometheus-logstash-exporter'
