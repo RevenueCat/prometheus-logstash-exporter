@@ -71,7 +71,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 }
 
 func (e *Exporter) collectMetrics(stats *Stats, ch chan<- prometheus.Metric) {
-	for _, k := range []string{"jvm", "events", "process", "reloads"} {
+	for _, k := range []string{"jvm", "events", "process", "reloads", "flow", "queue"} {
 		if tree, ok := (*stats)[k]; ok {
 			e.collectTree(k, tree, prometheus.Labels{}, ch)
 		}
@@ -161,7 +161,7 @@ func (e *Exporter) collectPipeline(pipelineName string, data interface{}, ch cha
 		labels["pipeline"] = pipelineName
 	}
 
-	for _, k := range []string{"events", "reloads", "queue", "dead_letter_queue"} {
+	for _, k := range []string{"events", "reloads", "queue", "dead_letter_queue", "flow"} {
 		e.collectTree("pipeline_"+k, stats[k], labels, ch)
 	}
 
