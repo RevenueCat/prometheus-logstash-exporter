@@ -1,28 +1,121 @@
 trigger:
 - master
 
+pr:
+- master
+
+variables:
+  ECR_REGION: us-east-1
+  ECR_REPO: prometheus-logstash-exporter
+
 stages:
-- stage: UploadDockerImage
-  displayName: 'Upload Docker Image'
+- stage: BuildAndPush
+  displayName: 'Build and Push Docker Image'
   jobs:
-    - job: BuildAndUploadTestDockerImagePrometheus
-      displayName: 'Build and Upload logstash prometheus exporter image'
+    - job: BuildX86
+      displayName: 'Build and push x86 image'
       pool:
-        vmImage: 'ubuntu-22.04'
+        name: 'CICD Docker x86'
       steps:
-        - task: Docker@2
-          inputs:
-            repository: 'prometheus-logstash-exporter'
-            command: 'build'
-            Dockerfile: 'Dockerfile'
-            tags: 'latest'
-        - task: ECRPushImage@1
-          displayName: "Push and tag as 'latest'"
+        - checkout: self
+        - task: AWSShellScript@1
+          displayName: 'Build and push x86 image'
           inputs:
             awsCredentials: 'CICDAzureBuild'
-            regionName: 'us-east-1'
-            imageSource: 'imagename'
-            sourceImageName: 'prometheus-logstash-exporter'
-            repositoryName: 'prometheus-logstash-exporter'
-            pushTag: 'latest'
-            autoCreateRepository: true
+            regionName: '$(ECR_REGION)'
+            scriptType: 'inline'
+            disableAutoCwd: true
+            workingDirectory: '$(Build.SourcesDirectory)'
+            inlineScript: |
+              set -e
+
+              AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+              ECR_HOST="${AWS_ACCOUNT_ID}.dkr.ecr.$(ECR_REGION).amazonaws.com"
+
+              aws ecr get-login-password --region $(ECR_REGION) | docker login --username AWS --password-stdin "${ECR_HOST}"
+
+              if [ "$(Build.Reason)" = "PullRequest" ]; then
+                BASE_TAG="pr-$(System.PullRequest.PullRequestNumber)"
+              else
+                BASE_TAG="commit-$(Build.SourceVersion)"
+              fi
+
+              docker build \
+                --tag "${ECR_HOST}/$(ECR_REPO):${BASE_TAG}-x86" \
+                -f Dockerfile .
+              docker push "${ECR_HOST}/$(ECR_REPO):${BASE_TAG}-x86"
+
+    - job: BuildARM
+      displayName: 'Build and push ARM image'
+      pool:
+        name: 'CICD Docker ARM'
+      steps:
+        - checkout: self
+        - task: AWSShellScript@1
+          displayName: 'Build and push ARM image'
+          inputs:
+            awsCredentials: 'CICDAzureBuild'
+            regionName: '$(ECR_REGION)'
+            scriptType: 'inline'
+            disableAutoCwd: true
+            workingDirectory: '$(Build.SourcesDirectory)'
+            inlineScript: |
+              set -e
+
+              AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+              ECR_HOST="${AWS_ACCOUNT_ID}.dkr.ecr.$(ECR_REGION).amazonaws.com"
+
+              aws ecr get-login-password --region $(ECR_REGION) | docker login --username AWS --password-stdin "${ECR_HOST}"
+
+              if [ "$(Build.Reason)" = "PullRequest" ]; then
+                BASE_TAG="pr-$(System.PullRequest.PullRequestNumber)"
+              else
+                BASE_TAG="commit-$(Build.SourceVersion)"
+              fi
+
+              docker build \
+                --tag "${ECR_HOST}/$(ECR_REPO):${BASE_TAG}-arm" \
+                -f Dockerfile .
+              docker push "${ECR_HOST}/$(ECR_REPO):${BASE_TAG}-arm"
+
+    - job: ManifestMerge
+      displayName: 'Create and push multi-arch manifest'
+      dependsOn:
+        - BuildX86
+        - BuildARM
+      pool:
+        name: 'CICD Docker x86'
+      steps:
+        - task: AWSShellScript@1
+          displayName: 'Push multi-arch manifest'
+          inputs:
+            awsCredentials: 'CICDAzureBuild'
+            regionName: '$(ECR_REGION)'
+            scriptType: 'inline'
+            inlineScript: |
+              set -e
+
+              AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+              ECR_HOST="${AWS_ACCOUNT_ID}.dkr.ecr.$(ECR_REGION).amazonaws.com"
+
+              aws ecr get-login-password --region $(ECR_REGION) | docker login --username AWS --password-stdin "${ECR_HOST}"
+
+              rm -rf ~/.docker/manifests
+
+              if [ "$(Build.Reason)" = "PullRequest" ]; then
+                BASE_TAG="pr-$(System.PullRequest.PullRequestNumber)"
+              else
+                BASE_TAG="commit-$(Build.SourceVersion)"
+              fi
+
+              tags="${BASE_TAG}"
+              if [ "$(Build.Reason)" != "PullRequest" ]; then
+                tags="${BASE_TAG} latest"
+              fi
+
+              for tag in ${tags}; do
+                docker manifest create "${ECR_HOST}/$(ECR_REPO):${tag}" \
+                  --amend "${ECR_HOST}/$(ECR_REPO):${BASE_TAG}-x86" \
+                  --amend "${ECR_HOST}/$(ECR_REPO):${BASE_TAG}-arm"
+                docker manifest push "${ECR_HOST}/$(ECR_REPO):${tag}"
+              done
